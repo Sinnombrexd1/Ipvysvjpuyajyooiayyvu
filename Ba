@@ -676,11 +676,11 @@ end
 end)
 
 CombateSection:NewButton("Knife aim", "ButtonInfo", function()
-local existingGui = game:GetService("CoreGui"):FindFirstChild("mygui")
+local existingGui = game:GetService("CoreGui"):FindFirstChild("xdd")
 if existingGui then return end
 
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "mygui"
+screenGui.Name = "xdd"
 screenGui.Parent = game:GetService("CoreGui")
 
 local function createButton(name, position, size, text)
