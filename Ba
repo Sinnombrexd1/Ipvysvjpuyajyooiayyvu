@@ -319,7 +319,7 @@ local function shootAtClosestPlayer()
         if closestCharacter then
             local predictedPosition = predictPosition(closestCharacter, distanceToClosestPlayer)
             if predictedPosition then
-                local gun = LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Gun")
+                local gun = LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Vampire's Gun")
                 if gun and gun:FindFirstChild("GunServer") and gun.GunServer:FindFirstChild("ShootStart") then
                     gun.GunServer.ShootStart:FireServer(1, predictedPosition)
                 end
@@ -1212,12 +1212,12 @@ local isSharpShooterActive = true
 local isTeamCheckActive = true
 
 local function EquipGun()
-    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester")
+    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester") or LocalPlayer.Backpack:FindFirstChild("Vampire's Gun")
     if gunInCharacter then
         return false
     end
 
-    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester")
+    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester") or LocalPlayer.Backpack:FindFirstChild("Vampire's Gun")
     if gunInBackpack then
         gunInBackpack.Parent = LocalPlayer.Character
     end
@@ -1225,7 +1225,7 @@ end
 
 local function UnequipGun()
     wait(0.2)
-    local gunInCharacter = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester")
+    local gunInCharacter = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Vampire's Gun")
     if gunInCharacter then
         gunInCharacter.Parent = LocalPlayer.Backpack
     end
@@ -1367,7 +1367,7 @@ local function shootAtClosestPlayer()
     if closestCharacter then
         local predictedPosition = predictPosition(closestCharacter, distanceToClosestPlayer)
         if predictedPosition then
-            local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester")
+            local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Vampire's Gun")
             if gun and gun:FindFirstChild("GunServer") and gun.GunServer:FindFirstChild("ShootStart") then
                 local args = {
                     [1] = 1,
