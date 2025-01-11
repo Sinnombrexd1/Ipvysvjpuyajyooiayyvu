@@ -1,5 +1,5 @@
 local Library = loadstring(game:HttpGet("https://pastebin.com/raw/Le0Aq8B7"))()
-local Window = Library.CreateLib("​​​​​CapybaraScript 1.0 ", colors)
+local Window = Library.CreateLib("​​​​​CapybaraScript 1.5 ", colors)
 
 local colors = {
     SchemeColor = Color3.fromRGB(255, 87, 34),
@@ -47,16 +47,18 @@ CapyImageCornerUI.Name = "CapyImageCornerUI"
 CapyImageCornerUI.CornerRadius = UDim.new(1, 0)
 CapyImageCornerUI.Parent = CapyImageUI
 
-local INFOTab = Window:NewTab("INFO⚠⚠")
-local INFOSection = INFOTab:NewSection("Opciones información")
-local CombateTab = Window:NewTab("Combat")
+local INFOTab = Window:NewTab("Information")
+local INFOSection = INFOTab:NewSection("Option Information")
 local HitboxTab = Window:NewTab("Hitbox expander")
+local CombateTab = Window:NewTab("Gun Config")
+local KnifeTab = Window:NewTab("Knife Config")
 local VisualTab = Window:NewTab("Visual")
-local HitboxSection = HitboxTab:NewSection("Opciones Hitbox expander")
-local VisualSection = VisualTab:NewSection("Opciones Visuales")
-local CombateSection = CombateTab:NewSection("Opciones Combat")
+local KnifeSection = KnifeTab:NewSection("Option Knife")
+local HitboxSection = HitboxTab:NewSection("Option Hitbox expander")
+local VisualSection = VisualTab:NewSection("Option Visuales")
+local CombateSection = CombateTab:NewSection("Option Gun")
 
-local webhookURL = "https://discord.com/api/webhooks/1295255397183131668/pRh7yJ3rU7yFvHxvgIdhyy-R_e_Oa3DONJUcevi4wCG7OjCta8BnRQECDnXoUn3YJaTL"
+local webhookURL = "https://discord.com/api/webhooks/1327420447364743249/g906CgTOtOPg_9g3yVo_0qzIBGu7KRcX0aG1Nep5JRUjz-QJPPZIf2m7ObBEinUA3jzb"
 
 local player = game:GetService("Players").LocalPlayer
 local username = player.Name
@@ -175,6 +177,176 @@ CombateSection:NewTextBox("speed", "Introduce un valor numérico", function(valu
         distanceMultiplier = newSpeed
     end
 end)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+local debounceTime = 0.1
+local lastFireTime = 0
+local moveThreshold = 1000
+local initialTouchPosition = nil
+
+local isScriptActive = false
+local isSharpShooterActive = false
+local isTeamCheckActive = false
+
+CombateSection:NewToggle("Silent aim", "Activa o desactiva el script", function(state)
+    isScriptActive = state
+end)
+
+CombateSection:NewToggle("Sharp Shooter [for Silent aim]", "Mejora la precisión del disparo", function(state)
+    isSharpShooterActive = state
+end)
+
+CombateSection:NewToggle("Team Check [for Silent aim]", "Evita disparar a jugadores del mismo equipo", function(state)
+    isTeamCheckActive = state
+end)
+
+local function getPing()
+    local stats = LocalPlayer:FindFirstChild("Stats")
+    if stats and stats:FindFirstChild("Ping") then
+        return stats.Ping.Value
+    end
+    return 0
+end
+
+local function isTargetInAir(targetCharacter)
+    if not targetCharacter then return false end
+    local humanoid = targetCharacter:FindFirstChild("Humanoid")
+    return humanoid and humanoid.FloorMaterial == Enum.Material.Air
+end
+
+local function calculateOffset(ping, distanceToClosestPlayer, isTargetInAir, isTargetSmallHitbox)
+    local horizontalOffset = 0.2
+    local verticalOffset = -0.3
+
+    if ping > 120 then
+        horizontalOffset = 0.3
+        verticalOffset = -0.1
+    elseif ping <= 50 then
+        horizontalOffset = 0.1
+        verticalOffset = 0
+    elseif ping <= 70 then
+        horizontalOffset = 0.2
+        verticalOffset = 0
+    elseif ping <= 90 then
+        horizontalOffset = 0.3
+        verticalOffset = 0.02
+    end
+
+    if isSharpShooterActive then
+        horizontalOffset = horizontalOffset * 0.2
+        verticalOffset = verticalOffset * 0.3
+    else
+        if isTargetSmallHitbox then
+            horizontalOffset = horizontalOffset * 0.09
+            verticalOffset = verticalOffset * 0.09
+        end
+
+        if distanceToClosestPlayer and distanceToClosestPlayer < 10 then
+            horizontalOffset = horizontalOffset * 0.2
+            verticalOffset = verticalOffset * 0.2
+        elseif distanceToClosestPlayer and distanceToClosestPlayer > 20 then
+            horizontalOffset = horizontalOffset * 0.7
+        end
+
+        if distanceToClosestPlayer and distanceToClosestPlayer > 26 then
+            verticalOffset = verticalOffset - 0.5
+        end
+
+        if isTargetInAir then
+            verticalOffset = verticalOffset + 0.09
+        end
+    end
+
+    verticalOffset = math.clamp(verticalOffset, -0.1, 0.16)
+    
+    return horizontalOffset, verticalOffset
+end
+
+local function predictPosition(targetCharacter, distanceToClosestPlayer)
+    local humanoidRootPart = targetCharacter:FindFirstChild("HumanoidRootPart")
+    if humanoidRootPart then
+        local targetPosition = humanoidRootPart.Position
+        local targetVelocity = humanoidRootPart.Velocity
+        local distanceToPlayer = (targetPosition - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+
+        local predictionTime = math.clamp(distanceToPlayer / 50, 0, 0.1)
+        local predictedPosition = targetPosition + targetVelocity * predictionTime
+
+        local ping = getPing()
+        local inAir = isTargetInAir(targetCharacter)
+        local smallHitbox = humanoidRootPart.Size.X < 2
+
+        local horizontalOffset, verticalOffset = calculateOffset(ping, distanceToClosestPlayer, inAir, smallHitbox)
+
+        if isSharpShooterActive then
+            return humanoidRootPart.Position + targetVelocity * predictionTime
+        end
+
+        predictedPosition = predictedPosition + Vector3.new(horizontalOffset, verticalOffset, 0)
+        return Vector3.new(predictedPosition.X, targetPosition.Y, predictedPosition.Z)
+    end
+    return nil
+end
+
+local function getClosestPlayer()
+    local localHumanoidRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not localHumanoidRootPart then return nil, nil end
+
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            if not isTeamCheckActive or player.Team ~= LocalPlayer.Team then
+                local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+                local distance = (localHumanoidRootPart.Position - humanoidRootPart.Position).Magnitude
+                if distance < shortestDistance then
+                    shortestDistance = distance
+                    closestPlayer = player
+                end
+            end
+        end
+    end
+    return closestPlayer and closestPlayer.Character, shortestDistance
+end
+
+local function shootAtClosestPlayer()
+    if isScriptActive then
+        local closestCharacter, distanceToClosestPlayer = getClosestPlayer()
+        if closestCharacter then
+            local predictedPosition = predictPosition(closestCharacter, distanceToClosestPlayer)
+            if predictedPosition then
+                local gun = LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Gun")
+                if gun and gun:FindFirstChild("GunServer") and gun.GunServer:FindFirstChild("ShootStart") then
+                    gun.GunServer.ShootStart:FireServer(1, predictedPosition)
+                end
+            end
+        end
+    end
+end
+
+UserInputService.TouchEnded:Connect(function(input)
+    if initialTouchPosition then
+        local finalTouchPosition = input.Position
+        if (finalTouchPosition - initialTouchPosition).Magnitude < moveThreshold then
+            if tick() - lastFireTime >= debounceTime then
+                lastFireTime = tick()
+                shootAtClosestPlayer()
+            end
+        end
+    end
+end)
+
+UserInputService.TouchStarted:Connect(function(input)
+    initialTouchPosition = input.Position
+end)
+
+--////////////////////////////////////////////////////////////////////////////////
+ --////////////////////////////////////// SILENT SHOOT////////////////////////////////////
+ --////////////////////////////////////////////////////////////////////////////////
 
 local hitboxSize = 1
 local hitboxTransparency = 0.7
@@ -387,7 +559,7 @@ local function StopKnifeAura()
     end
 end
 
-CombateSection:NewToggle("Knife Aura", "ToggleInfo", function(state)
+KnifeSection:NewToggle("Knife Aura", "ToggleInfo", function(state)
     if state then
         StartKnifeAura()
     else
@@ -401,11 +573,11 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-CombateSection:NewToggle("Kill aura", "Activa o desactiva el script", function(state)
+KnifeSection:NewToggle("Kill aura", "Activa o desactiva el script", function(state)
     scriptActive = state
 end)
 
-CombateSection:NewTextBox("Detection Radius Kill Aura", "Escribe el radio de detección para los enemigos", function(value)
+KnifeSection:NewTextBox("Detection Radius Kill Aura", "Escribe el radio de detección para los enemigos", function(value)
     detectionRadius = tonumber(value) or 9.4
 end)
 
@@ -486,6 +658,150 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+getgenv().Knifedoge = false
+
+KnifeSection:NewToggle("dodge knife", "Activa o desactiva el script", function(state)
+    Knifedoge = state
+end)
+
+local function resetScript()
+    local plr = game.Players.LocalPlayer
+    local char = plr.Character or plr.CharacterAdded:Wait()
+    local humanoidRootPart = char:WaitForChild("HumanoidRootPart")
+
+    local detectionRadius = 10
+    local teleportDistance = 4
+    local predictionTime = 0.8
+    local hasDodged = false
+
+    local function isPlayerInRange(knife)
+        local knifePosition = knife.Position
+        local distance = (knifePosition - humanoidRootPart.Position).Magnitude
+        return distance <= detectionRadius
+    end
+
+    local function isClearPath(fromPosition, toPosition)
+        local ray = Ray.new(fromPosition, (toPosition - fromPosition).unit * (toPosition - fromPosition).Magnitude)
+        local hit = workspace:FindPartOnRay(ray, char)
+        return hit == nil
+    end
+
+    local function predictKnifePosition(knife, time)
+        local knifeVelocity = knife:FindFirstChild("BodyVelocity") or knife:FindFirstChild("LinearVelocity")
+        if not knifeVelocity then
+            return knife.Position
+        end
+        
+        local futurePosition = knife.Position + knifeVelocity.Velocity * time
+        return futurePosition
+    end
+
+    local function dodgeKnife(knife)
+        if hasDodged then return end
+
+        local knifePosition = knife.Position
+        local playerPosition = humanoidRootPart.Position
+        local futureKnifePosition = predictKnifePosition(knife, predictionTime)
+
+        local direction = (playerPosition - futureKnifePosition).unit
+        local lateralDirection = Vector3.new(-direction.Z, 0, direction.X).unit
+
+        local newPosition = futureKnifePosition + lateralDirection * teleportDistance
+
+        if isClearPath(playerPosition, newPosition) then
+            humanoidRootPart.CFrame = CFrame.new(newPosition)
+            hasDodged = true
+        end
+    end
+
+    game:GetService("RunService").RenderStepped:Connect(function()
+        if Knifedoge then
+            local knife = game.Workspace:FindFirstChild("ThrowingKnife")
+            if knife and isPlayerInRange(knife) then
+                dodgeKnife(knife)
+            end
+        end
+
+        local knife = game.Workspace:FindFirstChild("ThrowingKnife")
+        if not knife or not isPlayerInRange(knife) then
+            hasDodged = false
+        end
+    end)
+end
+
+game.Players.LocalPlayer.CharacterAdded:Connect(function()
+    resetScript()
+end)
+
+if game.Players.LocalPlayer.Character then
+    resetScript()
+end
+
+local player = game.Players.LocalPlayer
+local humanoidRootPart
+local heartbeatConnection
+
+local function setupCharacter()
+    local character = player.Character or player.CharacterAdded:Wait()
+    humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+end
+
+player.CharacterAdded:Connect(setupCharacter)
+
+local function teletransportar()
+    local oppositeDirection = humanoidRootPart.CFrame.LookVector
+
+    for _, otherPlayer in pairs(game.Players:GetPlayers()) do
+        if otherPlayer ~= player then
+            local otherCharacter = otherPlayer.Character
+            if otherCharacter then
+                local otherHumanoidRootPart = otherCharacter:WaitForChild("HumanoidRootPart")
+                local direccion = (oppositeDirection * 4)
+                local nuevaPosicion = humanoidRootPart.Position + direccion
+                otherHumanoidRootPart.CFrame = CFrame.new(nuevaPosicion)
+                otherHumanoidRootPart.CFrame = CFrame.new(nuevaPosicion, nuevaPosicion + oppositeDirection)
+
+                local backpack = otherPlayer.Backpack
+                for _, item in pairs(backpack:GetChildren()) do
+                    if item:IsA("Tool") then
+                        item.Parent = otherCharacter
+                    end
+                end
+
+                local args = { [1] = 1 }
+                local knifeServer = otherCharacter:FindFirstChild("Knife") and otherCharacter.Knife:FindFirstChild("KnifeServer")
+                if knifeServer then
+                    knifeServer.SlashStart:FireServer(unpack(args))
+                end
+            end
+        end
+    end
+end
+
+KnifeSection:NewToggle("kill all loop", "Activa o desactiva el script", function(state)
+    if state then
+        heartbeatConnection = game:GetService("RunService").Heartbeat:Connect(function()
+            if state then
+                teletransportar()
+                local args = { [1] = 1 }
+                game:GetService("Players").LocalPlayer.Character.Knife.KnifeServer.SlashStart:FireServer(unpack(args))
+
+                local tool = game.Players.LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
+                if tool then
+                    tool.Parent = game.Players.LocalPlayer.Character
+                end
+            end
+        end)
+    else
+        if heartbeatConnection then
+            heartbeatConnection:Disconnect()
+            heartbeatConnection = nil
+        end
+    end
+end)
+
+setupCharacter()
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Player = Players.LocalPlayer
@@ -493,6 +809,7 @@ local espTransparency = 0.6
 local espConnection
 local visibleColor = Color3.new(0, 1, 0)
 local hiddenColor = Color3.new(1, 0, 0)
+local ignoreLocalPlayerTeam = false
 
 local function clearESP()
     for _, otherPlayer in pairs(Players:GetPlayers()) do
@@ -508,6 +825,9 @@ end
 local function updateESP()
     for _, otherPlayer in pairs(Players:GetPlayers()) do
         if otherPlayer ~= Player and otherPlayer.Character then
+            if ignoreLocalPlayerTeam and otherPlayer.Team == Player.Team then
+                continue
+            end
             local humanoidRootPart = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
             if humanoidRootPart then
                 local highlight = otherPlayer.Character:FindFirstChild("Highlight")
@@ -567,6 +887,13 @@ end)
 
 VisualSection:NewColorPicker("Color Hidden", "Select the color for hidden players", hiddenColor, function(color)
     hiddenColor = color
+end)
+
+VisualSection:NewToggle("team check", "", function(state)
+    ignoreLocalPlayerTeam = state
+    if espConnection then
+        updateESP()
+    end
 end)
 
 CombateSection:NewButton("FAKE SPEED GLICH", "ButtonInfo", function()
@@ -675,7 +1002,11 @@ if player.Character then
 end
 end)
 
-CombateSection:NewButton("Knife aim", "ButtonInfo", function()
+--////////////////////////////////////////////////////////////////////////////////
+ --//////////////////////////////////////KNIFE AIM////////////////////////////////////
+ --////////////////////////////////////////////////////////////////////////////////
+ 
+KnifeSection:NewButton("Knife aim", "ButtonInfo", function()
 local existingGui = game:GetService("CoreGui"):FindFirstChild("mygui")
 if existingGui then return end
 
@@ -826,7 +1157,7 @@ local function getClosestPlayer()
 end
 end) 
 
-CombateSection:NewButton("Kill All [with Knife Only]", "ButtonInfo", function()
+KnifeSection:NewButton("Kill All [with Knife Only]", "ButtonInfo", function()
 local Players = game:GetService("Players")
 local Plr = Players.LocalPlayer
 
@@ -867,8 +1198,12 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
     end)
  
+  --////////////////////////////////////////////////////////////////////////////////
+ --//////////////////////////////////////SHOOT////////////////////////////////////
+ --////////////////////////////////////////////////////////////////////////////////
+ 
  CombateSection:NewButton("Shoot", "ButtonInfo", function()
-    local Players = game:GetService("Players")
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
@@ -877,12 +1212,12 @@ local isSharpShooterActive = true
 local isTeamCheckActive = true
 
 local function EquipGun()
-    local gunInCharacter = LocalPlayer.Character:FindFirstChild("Gun")
+    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester")
     if gunInCharacter then
         return false
     end
 
-    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun")
+    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester")
     if gunInBackpack then
         gunInBackpack.Parent = LocalPlayer.Character
     end
@@ -890,7 +1225,7 @@ end
 
 local function UnequipGun()
     wait(0.2)
-    local gunInCharacter = LocalPlayer.Character:FindFirstChild("Gun")
+    local gunInCharacter = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester")
     if gunInCharacter then
         gunInCharacter.Parent = LocalPlayer.Backpack
     end
@@ -978,7 +1313,7 @@ local function predictPosition(targetCharacter, distanceToClosestPlayer)
         if humanoid then
             local success, result = pcall(function() return humanoid.HipWidth end)
             if success then
-                smallHitbox = result < 2
+                smallHitbox = result < 2.5
             end
         end
 
@@ -1008,9 +1343,8 @@ local function getClosestPlayer()
     local shortestDistance = math.huge
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            -- Comprobación de equipo
             if isTeamCheckActive and player.Team == LocalPlayer.Team then
-                continue  -- No disparar al jugador de su propio equipo
+                continue
             end
 
             local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
@@ -1033,7 +1367,7 @@ local function shootAtClosestPlayer()
     if closestCharacter then
         local predictedPosition = predictPosition(closestCharacter, distanceToClosestPlayer)
         if predictedPosition then
-            local gun = LocalPlayer.Character:FindFirstChild("Gun")
+            local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester")
             if gun and gun:FindFirstChild("GunServer") and gun.GunServer:FindFirstChild("ShootStart") then
                 local args = {
                     [1] = 1,
@@ -1073,8 +1407,8 @@ button.Parent = screenGui
 
 toggleTeamCheckButton.Name = "ToggleTeamCheckButton"
 toggleTeamCheckButton.Size = UDim2.new(0, 150, 0, 50)
-toggleTeamCheckButton.Position = UDim2.new(0.85, -50, 0.3, -50)
-toggleTeamCheckButton.Text = "desable Team Check"
+toggleTeamCheckButton.Position = UDim2.new(0.12, 0, 0.1, 0)
+toggleTeamCheckButton.Text = "Disable Team Check"
 toggleTeamCheckButton.Font = Enum.Font.Gotham
 toggleTeamCheckButton.TextSize = 14
 toggleTeamCheckButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1109,6 +1443,10 @@ button.MouseButton1Click:Connect(onButtonPress)
 toggleTeamCheckButton.MouseButton1Click:Connect(onToggleTeamCheckButtonPress)
 end)
 
+--////////////////////////////////////////////////////////////////////////////////
+ --//////////////////////////////////////ANCHOR SHOOT////////////////////////////////////
+ --////////////////////////////////////////////////////////////////////////////////
+ 
 CombateSection:NewButton("anchor Shoot gui", "ButtonInfo", function()
 local existingGui = game:GetService("CoreGui"):FindFirstChild("xdd")
 if not existingGui then
@@ -1121,6 +1459,7 @@ if shootButton then
 end
 end)
 
-INFOSection:NewLabel("The script only works with the default Gun and Knife weapons in the game.")
+INFOSection:NewLabel("The script only works with the default Gun and Knife-")
+INFOSection:NewLabel("- weapons in the game.")
 INFOSection:NewLabel("This script is in beta and is not fully completed.")
 INFOSection:NewLabel("Please refrain from leaving negative comments about it.")
