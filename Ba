@@ -1,5 +1,5 @@
 local Library = loadstring(game:HttpGet("https://pastebin.com/raw/Le0Aq8B7"))()
-local Window = Library.CreateLib("​​​​​CapybaraScript 1.7 ", colors)
+local Window = Library.CreateLib("​​​​​CapybaraScript 1.5 ", colors)
 
 local colors = {
     SchemeColor = Color3.fromRGB(255, 87, 34),
@@ -223,8 +223,8 @@ local function calculateOffset(ping, distanceToClosestPlayer, isTargetInAir, isT
     local verticalOffset = -0.3
 
     if ping > 120 then
-        horizontalOffset = 0.3
-        verticalOffset = -0.1
+        horizontalOffset = 0.1
+        verticalOffset = -0.2
     elseif ping <= 50 then
         horizontalOffset = 0.1
         verticalOffset = 0
@@ -237,12 +237,12 @@ local function calculateOffset(ping, distanceToClosestPlayer, isTargetInAir, isT
     end
 
     if isSharpShooterActive then
-        horizontalOffset = horizontalOffset * 0.2
-        verticalOffset = verticalOffset * 0.3
+        horizontalOffset = horizontalOffset * 0.1
+        verticalOffset = verticalOffset * 0.2
     else
         if isTargetSmallHitbox then
-            horizontalOffset = horizontalOffset * 0.09
-            verticalOffset = verticalOffset * 0.09
+            horizontalOffset = horizontalOffset * 0.06
+            verticalOffset = verticalOffset * 0.06
         end
 
         if distanceToClosestPlayer and distanceToClosestPlayer < 10 then
@@ -253,15 +253,15 @@ local function calculateOffset(ping, distanceToClosestPlayer, isTargetInAir, isT
         end
 
         if distanceToClosestPlayer and distanceToClosestPlayer > 26 then
-            verticalOffset = verticalOffset - 0.5
+            verticalOffset = verticalOffset - 0.4
         end
 
         if isTargetInAir then
-            verticalOffset = verticalOffset + 0.09
+            verticalOffset = verticalOffset + 0.08
         end
     end
 
-    verticalOffset = math.clamp(verticalOffset, -0.1, 0.16)
+    verticalOffset = math.clamp(verticalOffset, -0.2, 0.17)
     
     return horizontalOffset, verticalOffset
 end
@@ -273,7 +273,7 @@ local function predictPosition(targetCharacter, distanceToClosestPlayer)
         local targetVelocity = humanoidRootPart.Velocity
         local distanceToPlayer = (targetPosition - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
 
-        local predictionTime = math.clamp(distanceToPlayer / 50, 0, 0.1)
+        local predictionTime = math.clamp(distanceToPlayer / 60, 0, 0.08)
         local predictedPosition = targetPosition + targetVelocity * predictionTime
 
         local ping = getPing()
@@ -319,7 +319,7 @@ local function shootAtClosestPlayer()
         if closestCharacter then
             local predictedPosition = predictPosition(closestCharacter, distanceToClosestPlayer)
             if predictedPosition then
-                local gun = LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Vampire's Gun")
+                local gun = LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Vampire's Gun") or LocalPlayer.Character:FindFirstChild("Gingerscope") 
                 if gun and gun:FindFirstChild("GunServer") and gun.GunServer:FindFirstChild("ShootStart") then
                     gun.GunServer.ShootStart:FireServer(1, predictedPosition)
                 end
@@ -1212,12 +1212,12 @@ local isSharpShooterActive = true
 local isTeamCheckActive = true
 
 local function EquipGun()
-    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester") or LocalPlayer.Backpack:FindFirstChild("Vampire's Gun")
+    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester") or LocalPlayer.Backpack:FindFirstChild("Vampire's Gun") or LocalPlayer.Backpack:FindFirstChild("Gingerscope")
     if gunInCharacter then
         return false
     end
 
-    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester") or LocalPlayer.Backpack:FindFirstChild("Vampire's Gun")
+    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester") or LocalPlayer.Backpack:FindFirstChild("Vampire's Gun") or LocalPlayer.Backpack:FindFirstChild("Gingerscope")
     if gunInBackpack then
         gunInBackpack.Parent = LocalPlayer.Character
     end
@@ -1225,7 +1225,7 @@ end
 
 local function UnequipGun()
     wait(0.2)
-    local gunInCharacter = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Vampire's Gun")
+    local gunInCharacter = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Vampire's Gun") or LocalPlayer.Character:FindFirstChild("Gingerscope") 
     if gunInCharacter then
         gunInCharacter.Parent = LocalPlayer.Backpack
     end
@@ -1253,8 +1253,8 @@ local function calculateOffset(ping, distanceToClosestPlayer, isTargetInAir, isT
     local verticalOffset = -0.3
 
     if ping > 120 then
-        horizontalOffset = 0.3
-        verticalOffset = -0.1
+        horizontalOffset = 0.1
+        verticalOffset = -0.2
     elseif ping <= 50 then
         horizontalOffset = 0.1
         verticalOffset = 0
@@ -1267,12 +1267,12 @@ local function calculateOffset(ping, distanceToClosestPlayer, isTargetInAir, isT
     end
 
     if isSharpShooterActive then
-        horizontalOffset = horizontalOffset * 0.2
-        verticalOffset = verticalOffset * 0.3
+        horizontalOffset = horizontalOffset * 0.1
+        verticalOffset = verticalOffset * 0.2
     else
         if isTargetSmallHitbox then
-            horizontalOffset = horizontalOffset * 0.09
-            verticalOffset = verticalOffset * 0.09
+            horizontalOffset = horizontalOffset * 0.06
+            verticalOffset = verticalOffset * 0.06
         end
 
         if distanceToClosestPlayer and distanceToClosestPlayer < 10 then
@@ -1283,15 +1283,15 @@ local function calculateOffset(ping, distanceToClosestPlayer, isTargetInAir, isT
         end
 
         if distanceToClosestPlayer and distanceToClosestPlayer > 26 then
-            verticalOffset = verticalOffset - 0.5
+            verticalOffset = verticalOffset - 0.4
         end
 
         if isTargetInAir then
-            verticalOffset = verticalOffset + 0.09
+            verticalOffset = verticalOffset + 0.08
         end
     end
 
-    verticalOffset = math.clamp(verticalOffset, -0.1, 0.16)
+    verticalOffset = math.clamp(verticalOffset, -0.2, 0.17)
     
     return horizontalOffset, verticalOffset
 end
@@ -1303,7 +1303,7 @@ local function predictPosition(targetCharacter, distanceToClosestPlayer)
         local targetVelocity = humanoidRootPart.Velocity
         local distanceToPlayer = (targetPosition - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
 
-        local predictionTime = math.clamp(distanceToPlayer / 50, 0, 0.1)
+        local predictionTime = math.clamp(distanceToPlayer / 60, 0, 0.08)
         local predictedPosition = targetPosition + targetVelocity * predictionTime
 
         local ping = getPing()
@@ -1367,7 +1367,7 @@ local function shootAtClosestPlayer()
     if closestCharacter then
         local predictedPosition = predictPosition(closestCharacter, distanceToClosestPlayer)
         if predictedPosition then
-            local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Vampire's Gun")
+            local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Vampire's Gun") or LocalPlayer.Character:FindFirstChild("Gingerscope") 
             if gun and gun:FindFirstChild("GunServer") and gun.GunServer:FindFirstChild("ShootStart") then
                 local args = {
                     [1] = 1,
@@ -1458,7 +1458,9 @@ if shootButton then
     shootButton.Draggable = not shootButton.Draggable
 end
 end)
-
+VisualSection:NewButton("Boost fps", "ButtonInfo", function()
+loadstring(game:HttpGet("https://pastebin.com/raw/1R1D3nL7", true))()
+end)
 INFOSection:NewLabel("The script only works with the default Gun and Knife-")
 INFOSection:NewLabel("- weapons in the game.")
 INFOSection:NewLabel("This script is in beta and is not fully completed.")
