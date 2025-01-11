@@ -1,5 +1,5 @@
 local Library = loadstring(game:HttpGet("https://pastebin.com/raw/Le0Aq8B7"))()
-local Window = Library.CreateLib("​​​​​CapybaraScript 1.5 ", colors)
+local Window = Library.CreateLib("​​​​​CapybaraScript 1.7 ", colors)
 
 local colors = {
     SchemeColor = Color3.fromRGB(255, 87, 34),
