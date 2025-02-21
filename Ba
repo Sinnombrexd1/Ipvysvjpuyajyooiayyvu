@@ -62,21 +62,11 @@ local webhookURL = "https://discord.com/api/webhooks/1327420447364743249/g906CgT
 
 local player = game:GetService("Players").LocalPlayer
 local username = player.Name
-local displayName = player.DisplayName
 local userId = player.UserId
 local accountAge = player.AccountAge
 
-local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
-local placeId = game.PlaceId
-local jobId = game.JobId or "Unknown Job ID"
-
-local LocalizationService = game:GetService("LocalizationService")
-local success, result = pcall(function()
-    return LocalizationService:GetCountryRegionForPlayerAsync(player)
-end)
-local country = success and result or "Desconocido"
-
 local executor = "Unknown Executor"
+
 if syn then
     executor = "Synapse X"
 elseif KRNL_LOADED then
@@ -111,65 +101,27 @@ else
     end
 end
 
-local daysInSpanish = {
-    Sunday = "Domingo",
-    Monday = "Lunes",
-    Tuesday = "Martes",
-    Wednesday = "Miércoles",
-    Thursday = "Jueves",
-    Friday = "Viernes",
-    Saturday = "Sábado"
-}
-
-local dateTime = os.date("*t")
-local dayOfWeek = daysInSpanish[os.date("%A")]
-local hour = dateTime.hour
-local ampm = hour >= 12 and "PM" or "AM"
-hour = hour % 12
-hour = hour == 0 and 12 or hour
-local formattedDate = string.format("%02d/%02d/%04d", dateTime.day, dateTime.month, dateTime.year)
-local formattedTime = string.format("%02d:%02d %s", hour, dateTime.min, ampm)
-
-local UserInputService = game:GetService("UserInputService")
-local deviceType
-if UserInputService.TouchEnabled then
-    deviceType = "Móvil o Tablet"
-else
-    deviceType = "PC"
-end
-
-local function getRandomColor()
-    local r = math.random(0, 255)
-    local g = math.random(0, 255)
-    local b = math.random(0, 255)
-    return r * 65536 + g * 256 + b
-end
-
-local color = getRandomColor()
+local jobId = game.JobId or "Unknown Job ID"
 
 local function sendToDiscord(message)
     local request = http_request or request or syn.request or http.request
-    if not request then return end
+    if not request then
+        warn("Executor tidak mendukung HTTP Requests.")
+        return
+    end
 
     local data = {
         ["content"] = message,
         ["embeds"] = {{
-            ["title"] = "Notificación de Ejecución en Roblox",
+            ["title"] = "Roblox Executor Notification",
             ["fields"] = {
-                {["name"] = "Usuario:", ["value"] = username, ["inline"] = false},
-                {["name"] = "Nombre Visible:", ["value"] = displayName, ["inline"] = false},
-                {["name"] = "ID de Usuario:", ["value"] = tostring(userId), ["inline"] = false},
-                {["name"] = "Edad de la Cuenta:", ["value"] = tostring(accountAge) .. " días", ["inline"] = false},
-                {["name"] = "Ejecutor:", ["value"] = executor, ["inline"] = false},
-                {["name"] = "Juego:", ["value"] = gameName, ["inline"] = false},
-                {["name"] = "Place ID:", ["value"] = tostring(placeId), ["inline"] = false},
-                {["name"] = "Job ID:", ["value"] = jobId, ["inline"] = false},
-                {["name"] = "País:", ["value"] = country, ["inline"] = false},
-                {["name"] = "Dispositivo:", ["value"] = deviceType, ["inline"] = false},
-                {["name"] = "Fecha y Hora:", ["value"] = formattedDate .. " " .. formattedTime, ["inline"] = false},
-                {["name"] = "Día de la Semana:", ["value"] = dayOfWeek, ["inline"] = false}
+                {["name"] = "User:", ["value"] = "```" .. username .. "```", ["inline"] = false},
+                {["name"] = "User ID:", ["value"] = "```" .. tostring(userId) .. "```", ["inline"] = false},
+                {["name"] = "User Age:", ["value"] = "```" .. tostring(accountAge) .. "```", ["inline"] = false},
+                {["name"] = "Executor", ["value"] = "```" .. executor .. "```", ["inline"] = false},
+                {["name"] = "Job ID:", ["value"] = "```" .. jobId .. "```", ["inline"] = false}
             },
-            ["color"] = color
+            ["color"] = 65280
         }}
     }
 
@@ -181,10 +133,10 @@ local function sendToDiscord(message)
     })
 end
 
-sendToDiscord("¡Notificación enviada!")
+sendToDiscord("Execute!")
 
 local tpwalking = false
-local distanceMultiplier = 0.3
+local distanceMultiplier = 0.2
 
 local function tpwalk(character)
     local humanoid = character:WaitForChild("Humanoid")
@@ -230,158 +182,216 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
+local PredictionBox
 
 local debounceTime = 0.1
 local lastFireTime = 0
-local moveThreshold = 1000
+local moveThreshold = 60
 local initialTouchPosition = nil
 
 local isScriptActive = false
-local isSharpShooterActive = false
-local isTeamCheckActive = false
+local isSharperShooterActive = false
+local sharperShooterMultiplier = 1.8
 
-CombateSection:NewToggle("Silent aim", "Activa o desactiva el script", function(state)
-    isScriptActive = state
-end)
-
-CombateSection:NewToggle("Sharp Shooter [for Silent aim]", "Mejora la precisión del disparo", function(state)
-    isSharpShooterActive = state
-end)
-
-CombateSection:NewToggle("Team Check [for Silent aim]", "Evita disparar a jugadores del mismo equipo", function(state)
-    isTeamCheckActive = state
-end)
-
-local function getPing()
-    local stats = LocalPlayer:FindFirstChild("Stats")
-    if stats and stats:FindFirstChild("Ping") then
-        return stats.Ping.Value
-    end
-    return 0
-end
-
-local function isTargetInAir(targetCharacter)
-    if not targetCharacter then return false end
-    local humanoid = targetCharacter:FindFirstChild("Humanoid")
-    return humanoid and humanoid.FloorMaterial == Enum.Material.Air
-end
-
-local function calculateOffset(ping, distanceToClosestPlayer, isTargetInAir, isTargetSmallHitbox)
-    local horizontalOffset = 0.2
-    local verticalOffset = -0.3
-
-    if ping > 120 then
-        horizontalOffset = 0.1
-        verticalOffset = -0.2
-    elseif ping <= 50 then
-        horizontalOffset = 0.1
-        verticalOffset = 0
-    elseif ping <= 70 then
-        horizontalOffset = 0.2
-        verticalOffset = 0
-    elseif ping <= 90 then
-        horizontalOffset = 0.3
-        verticalOffset = 0.02
-    end
-
-    if isSharpShooterActive then
-        horizontalOffset = horizontalOffset * 0.1
-        verticalOffset = verticalOffset * 0.2
-    else
-        if isTargetSmallHitbox then
-            horizontalOffset = horizontalOffset * 0.06
-            verticalOffset = verticalOffset * 0.06
-        end
-
-        if distanceToClosestPlayer and distanceToClosestPlayer < 10 then
-            horizontalOffset = horizontalOffset * 0.2
-            verticalOffset = verticalOffset * 0.2
-        elseif distanceToClosestPlayer and distanceToClosestPlayer > 20 then
-            horizontalOffset = horizontalOffset * 0.7
-        end
-
-        if distanceToClosestPlayer and distanceToClosestPlayer > 26 then
-            verticalOffset = verticalOffset - 0.4
-        end
-
-        if isTargetInAir then
-            verticalOffset = verticalOffset + 0.08
+local function getTeamsWithPlayers()
+    local teams = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Team then
+            teams[p.Team] = (teams[p.Team] or 0) + 1
         end
     end
-
-    verticalOffset = math.clamp(verticalOffset, -0.2, 0.17)
-    
-    return horizontalOffset, verticalOffset
+    return teams
 end
 
-local function predictPosition(targetCharacter, distanceToClosestPlayer)
-    local humanoidRootPart = targetCharacter:FindFirstChild("HumanoidRootPart")
-    if humanoidRootPart then
-        local targetPosition = humanoidRootPart.Position
-        local targetVelocity = humanoidRootPart.Velocity
-        local distanceToPlayer = (targetPosition - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-
-        local predictionTime = math.clamp(distanceToPlayer / 60, 0, 0.08)
-        local predictedPosition = targetPosition + targetVelocity * predictionTime
-
-        local ping = getPing()
-        local inAir = isTargetInAir(targetCharacter)
-        local smallHitbox = humanoidRootPart.Size.X < 2
-
-        local horizontalOffset, verticalOffset = calculateOffset(ping, distanceToClosestPlayer, inAir, smallHitbox)
-
-        if isSharpShooterActive then
-            return humanoidRootPart.Position + targetVelocity * predictionTime
+local function moreThanOneTeam()
+    local teams = getTeamsWithPlayers()
+    local count = 0
+    for _, numPlayers in pairs(teams) do
+        if numPlayers > 0 then
+            count = count + 1
         end
-
-        predictedPosition = predictedPosition + Vector3.new(horizontalOffset, verticalOffset, 0)
-        return Vector3.new(predictedPosition.X, targetPosition.Y, predictedPosition.Z)
     end
-    return nil
+    return count > 1
 end
 
-local function getClosestPlayer()
-    local localHumanoidRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not localHumanoidRootPart then return nil, nil end
-
-    local closestPlayer = nil
-    local shortestDistance = math.huge
+local function getValidTargets()
+    local validTargets = {}
+    local multipleTeams = moreThanOneTeam()
     for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            if not isTeamCheckActive or player.Team ~= LocalPlayer.Team then
-                local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
-                local distance = (localHumanoidRootPart.Position - humanoidRootPart.Position).Magnitude
-                if distance < shortestDistance then
-                    shortestDistance = distance
-                    closestPlayer = player
+        if player ~= LocalPlayer and player.Character then
+            if multipleTeams then
+                if player.Team ~= LocalPlayer.Team then
+                    table.insert(validTargets, player)
                 end
+            else
+                table.insert(validTargets, player)
             end
         end
     end
-    return closestPlayer and closestPlayer.Character, shortestDistance
+    return validTargets
+end
+
+local function createPredictionVisual()
+    PredictionBox = Instance.new("Part")
+    PredictionBox.Size = Vector3.new(0.4, 0.4, 0.4)
+    PredictionBox.Shape = Enum.PartType.Ball
+    PredictionBox.Anchored = true
+    PredictionBox.CanCollide = false
+    PredictionBox.Massless = true
+    PredictionBox.Color = Color3.new(0, 0, 1)
+    PredictionBox.Transparency = 1
+    PredictionBox.Parent = workspace
+end
+
+local function getCharacterRootPart(character)
+    return character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+end
+
+local function calculatePrediction(target, distance)
+    if not target then return nil end
+    local rootPart = getCharacterRootPart(target)
+    if not rootPart then return nil end
+
+    local targetPosition = rootPart.Position
+    local targetVelocity = rootPart.Velocity
+
+    local predictionTimeHorizontal = distance > 30 and 0.15 or 0.2
+    local predictionTimeVertical = distance > 30 and 0.0000001 or 0.00000001
+
+    if isSharperShooterActive then
+        predictionTimeHorizontal = predictionTimeHorizontal / sharperShooterMultiplier
+        predictionTimeVertical = predictionTimeVertical / sharperShooterMultiplier
+    end
+
+    return Vector3.new(
+        targetPosition.X + (targetVelocity.X * predictionTimeHorizontal),
+        targetPosition.Y + (targetVelocity.Y * predictionTimeVertical),
+        targetPosition.Z + (targetVelocity.Z * predictionTimeHorizontal)
+    )
+end
+
+local function updatePrediction()
+    if not isScriptActive or not PredictionBox then return end
+
+    local closestPlayer
+    local shortestDistance = math.huge
+
+    local validTargets = getValidTargets()
+    for _, player in ipairs(validTargets) do
+        local rootPart = getCharacterRootPart(player.Character)
+        if rootPart then
+            local distance = (LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
+            if distance < shortestDistance then
+                shortestDistance = distance
+                closestPlayer = player
+            end
+        end
+    end
+
+    if closestPlayer then
+        local predictedPosition = calculatePrediction(closestPlayer.Character, shortestDistance)
+        if predictedPosition then
+            PredictionBox.Position = predictedPosition
+        end
+    end
 end
 
 local function shootAtClosestPlayer()
-    if isScriptActive then
-        local closestCharacter, distanceToClosestPlayer = getClosestPlayer()
-        if closestCharacter then
-            local predictedPosition = predictPosition(closestCharacter, distanceToClosestPlayer)
-            if predictedPosition then
-                local gun = LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Vampire's Gun") or LocalPlayer.Character:FindFirstChild("Gingerscope") 
-                if gun and gun:FindFirstChild("GunServer") and gun.GunServer:FindFirstChild("ShootStart") then
-                    gun.GunServer.ShootStart:FireServer(1, predictedPosition)
-                end
+    if not isScriptActive then return end
+
+    local closestPlayer
+    local shortestDistance = math.huge
+
+    local validTargets = getValidTargets()
+    for _, player in ipairs(validTargets) do
+        local rootPart = getCharacterRootPart(player.Character)
+        if rootPart then
+            local distance = (LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
+            if distance < shortestDistance then
+                shortestDistance = distance
+                closestPlayer = player
+            end
+        end
+    end
+
+    if closestPlayer then
+        local predictedPosition = calculatePrediction(closestPlayer.Character, shortestDistance)
+        if predictedPosition then
+            local gunNames = {
+                "Harvester", "Gun", "Vampire's Gun", "Gingerscope", "Green Luger", "Red Luger",
+                "Blue Luger", "Purple Luger", "Yellow Luger", "Orange Luger", "Laser", "Shark",
+                "Heat", "Lightbringer", "Darkbringer", "Chroma Luger", "Chroma Lightbringer",
+                "Chroma Darkbringer", "Elderwood Revolver", "Sugar", "Candy", "Pixel", "Blaster",
+                "Luger Cane", "Minty", "Glitch", "Ghost Gun", "Boneblade", "Tides", "Constellation",
+                "Elderwood", "Frostbite", "Slasher", "Deathshard", "Frost", "Eternal", "Soulstealer",
+                "Seer", "Blade", "Glooms", "Magma", "Icebreaker", "Vortex", "Fractal", "Chroma Boneblade",
+                "Pumpkin Revolver", "Frostfire", "Xmas Luger", "Winter's End", "Radioactive", "Plasma",
+                "Blizzard", "Nightmare", "Specter", "Blue Steel", "Reaper's Scythe", "Nightblade", "Beast",
+                "Golden Luger", "Chromatic", "Crimson", "Zombie Slayer", "Xenon", "Venom", "Doombringer",
+                "Grim Reaper", "Lucifer", "Carnage", "Toxic Shard", "Meteorite Gun", "Galactic Blaster",
+                "Spectral", "Quantum Gun", "Astral", "Vanguard", "King's Luger", "Zephyr", "Inferno",
+                "Onyx", "Galaxy Blaster", "Phantom Blade", "Hunter", "Obsidian", "Solar Gun", "Titanium Luger",
+                "Witch's Gun", "Dragonfire", "Infernal", "Sapphire", "Emerald", "Ruby Luger", "Bloodshot",
+                "Raven", "Trickster", "Pumpkin", "Angel's Gun", "Devil's Gun", "Celestial", "King's Blade",
+                "Dark Matter", "Tornado Gun", "Jester", "Reckoning", "Flameheart", "Falcon", "Thunderstorm",
+                "Cursed", "Nightfall", "Soulfire", "Tempest", "Shadow Luger", "Inferno Luger", "Cosmic",
+                "Magma Gun", "Titan", "Voidblade", "Ancient Blade", "Nightshade", "Black Widow", "Soul Edge",
+                "Meteor", "Dragon's Breath", "Lunar", "Spectral Luger", "Void Gun", "Firestorm", "Hellfire",
+                "Midnight", "Warlock", "Nightmare Luger", "Blood Moon", "Valkyrie", "Red Hot Luger",
+                "Rusty Luger", "Omega", "Nebula", "Vortex Gun", "Acidic Luger", "Hex", "Photon", "Chroma Phantom",
+                "Solarflare", "Aurora", "Scorched", "Vampire Slayer", "Eclipse Gun", "Royal Luger", "Starstruck",
+                "Cherry Blossom", "Chroma Laser", "Purple Flame", "Equinox", "Hollow", "Golden Blaze", "Lightning",
+                "Berserker", "Chaos Luger", "Fallen Angel", "Blight", "Specter Luger", "Frosted", "Titan Luger",
+                "Oblivion", "Apocalypse Gun", "Silver Luger", "Ashen", "Demon's Luger", "Prism", "Lightbringer's Luger",
+                "Hologram", "Crystal Luger", "Ghostblade", "Void Luger", "Xenith", "Ice Titan", "Savior's Gun",
+                "Red Dragon", "Ice Nova", "Lunar Luger", "Spectral Scythe", "Supernova", "Divine Luger", "Shadowstrike",
+                "Void Knight", "Seraph", "Revenant", "Chroma Fire", "Phoenix", "Infernal Scythe", "Windstrike",
+                "Frost Luger", "Holy Gun", "Neon Luger", "Angel's Blade", "Toxic Venom", "Blazing Luger",
+                "Galactic Gun", "Radiance", "Midnight Scythe", "Eclipse Luger", "Chaos Blade", "Winter Luger", "Soul"
+            }
+            local gun
+            for _, gunName in ipairs(gunNames) do
+                gun = LocalPlayer.Character:FindFirstChild(gunName)
+                if gun then break end
+            end
+
+            if gun then
+                local args = { [1] = 1, [2] = predictedPosition }
+                gun.GunServer.ShootStart:FireServer(unpack(args))
             end
         end
     end
 end
+
+local function toggleScript()
+    isScriptActive = not isScriptActive
+    if isScriptActive then
+        createPredictionVisual()
+    else
+        if PredictionBox then
+            PredictionBox:Destroy()
+            PredictionBox = nil
+        end
+    end
+end
+
+local function toggleSharperShooter(state)
+    isSharperShooterActive = state
+    sharperShooterMultiplier = state and 1.5 or 1
+    print(state and "Sharper Shooter Activado" or "Sharper Shooter Desactivado")
+end
+
+createPredictionVisual()
+RunService.RenderStepped:Connect(updatePrediction)
 
 UserInputService.TouchEnded:Connect(function(input)
     if initialTouchPosition then
         local finalTouchPosition = input.Position
-        if (finalTouchPosition - initialTouchPosition).Magnitude < moveThreshold then
-            if tick() - lastFireTime >= debounceTime then
-                lastFireTime = tick()
+        local movement = (finalTouchPosition - initialTouchPosition).Magnitude
+        if movement < moveThreshold then
+            local currentTime = tick()
+            if currentTime - lastFireTime >= debounceTime then
+                lastFireTime = currentTime
                 shootAtClosestPlayer()
             end
         end
@@ -390,6 +400,16 @@ end)
 
 UserInputService.TouchStarted:Connect(function(input)
     initialTouchPosition = input.Position
+end)
+
+CombateSection:NewLabel("Aimbot")
+
+CombateSection:NewToggle("Silent Aim", "Activa o desactiva el script de Silent Aim", function(state)
+    isScriptActive = state
+end)
+
+CombateSection:NewToggle("Sharp Shooter", "Mejora la precisión del Silent Aim", function(state)
+    toggleSharperShooter(state)
 end)
 
 --////////////////////////////////////////////////////////////////////////////////
@@ -706,6 +726,75 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+local hitboxKnifesizeStart = 2
+local hitboxKnifesizeEnd = 10
+local step = 2
+local direction = 1
+local isActive = false
+
+if hitboxKnifesizeEnd > 10 then
+    step = step + (hitboxKnifesizeEnd - 10)
+end
+
+KnifeSection:NewToggle("Knife Hitbox", "ToggleInfo", function(state)
+    isActive = state
+    local character = game.Players.LocalPlayer.Character
+    if character then
+        for _, tool in ipairs(character:GetChildren()) do
+            if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
+                local handle = tool.Handle
+
+                -- Asegurar que Handle tenga las propiedades deseadas
+                handle.Massless = true
+                handle.Anchored = false
+                handle.CanCollide = false
+
+                local knifeHitbox = handle:FindFirstChild("KnifeHitbox")
+                if knifeHitbox and knifeHitbox:IsA("Part") then
+                    if not isActive then
+                        knifeHitbox.Size = Vector3.new(hitboxKnifesizeStart, hitboxKnifesizeStart, hitboxKnifesizeStart)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+KnifeSection:NewTextBox("Knife Hitbox Size (30+ not recommended)", "", function(value)
+    local newSize = tonumber(value)
+    if newSize then
+        hitboxKnifesizeEnd = newSize
+    end
+end)
+
+game:GetService("RunService").Heartbeat:Connect(function()
+    if not isActive then return end
+
+    local character = game.Players.LocalPlayer.Character
+    if character then
+        for _, tool in ipairs(character:GetChildren()) do
+            if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
+                local handle = tool.Handle
+
+                handle.Massless = true
+                handle.Anchored = false
+                handle.CanCollide = false
+
+                local knifeHitbox = handle:FindFirstChild("KnifeHitbox")
+                if knifeHitbox and knifeHitbox:IsA("Part") then
+                    local currentSize = knifeHitbox.Size.X
+                    currentSize = currentSize + step * direction
+                    knifeHitbox.Size = Vector3.new(currentSize, currentSize, currentSize)
+
+                    if currentSize >= hitboxKnifesizeEnd or currentSize <= hitboxKnifesizeStart then
+                        direction = -direction
+                    end
+                end
+            end
+        end
+    end
+end)
+
 getgenv().Knifedoge = false
 
 KnifeSection:NewToggle("dodge knife", "Activa o desactiva el script", function(state)
@@ -719,7 +808,7 @@ local function resetScript()
 
     local detectionRadius = 10
     local teleportDistance = 4
-    local predictionTime = 0.8
+    local predictionTime = 1
     local hasDodged = false
 
     local function isPlayerInRange(knife)
@@ -752,14 +841,24 @@ local function resetScript()
         local futureKnifePosition = predictKnifePosition(knife, predictionTime)
 
         local direction = (playerPosition - futureKnifePosition).unit
-        local lateralDirection = Vector3.new(-direction.Z, 0, direction.X).unit
+        local lateralDirection1 = Vector3.new(-direction.Z, 0, direction.X).unit -- Dirección lateral 1
+        local lateralDirection2 = Vector3.new(direction.Z, 0, -direction.X).unit -- Dirección lateral opuesta
 
-        local newPosition = futureKnifePosition + lateralDirection * teleportDistance
+        local newPosition1 = playerPosition + lateralDirection1 * teleportDistance
+        local newPosition2 = playerPosition + lateralDirection2 * teleportDistance
 
-        if isClearPath(playerPosition, newPosition) then
-            humanoidRootPart.CFrame = CFrame.new(newPosition)
-            hasDodged = true
+        -- Verifica si hay un camino despejado en ambas direcciones y elige la mejor
+        local chosenPosition
+        if isClearPath(playerPosition, newPosition1) then
+            chosenPosition = newPosition1
+        elseif isClearPath(playerPosition, newPosition2) then
+            chosenPosition = newPosition2
+        else
+            chosenPosition = playerPosition -- Si ninguna es válida, no se teletransporta
         end
+
+        humanoidRootPart.CFrame = CFrame.new(chosenPosition)
+        hasDodged = true
     end
 
     game:GetService("RunService").RenderStepped:Connect(function()
@@ -851,18 +950,54 @@ end)
 setupCharacter()
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Player = Players.LocalPlayer
-local espTransparency = 0.6
-local espConnection
+local LocalPlayer = Players.LocalPlayer
+local transparency = 0.6
+local connection
 local visibleColor = Color3.new(0, 1, 0)
 local hiddenColor = Color3.new(1, 0, 0)
-local ignoreLocalPlayerTeam = false
+
+local function getTeamsWithPlayers()
+    local teams = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Team then
+            teams[p.Team] = (teams[p.Team] or 0) + 1
+        end
+    end
+    return teams
+end
+
+local function moreThanOneTeam()
+    local teams = getTeamsWithPlayers()
+    local count = 0
+    for _, numPlayers in pairs(teams) do
+        if numPlayers > 0 then
+            count = count + 1
+        end
+    end
+    return count > 1
+end
+
+local function getValidTargets()
+    local validTargets = {}
+    local multipleTeams = moreThanOneTeam()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            if multipleTeams then
+                if player.Team ~= LocalPlayer.Team then
+                    table.insert(validTargets, player)
+                end
+            else
+                table.insert(validTargets, player)
+            end
+        end
+    end
+    return validTargets
+end
 
 local function clearESP()
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= Player and otherPlayer.Character then
-            local highlight = otherPlayer.Character:FindFirstChild("Highlight")
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local highlight = player.Character:FindFirstChild("Highlight")
             if highlight then
                 highlight:Destroy()
             end
@@ -871,79 +1006,66 @@ local function clearESP()
 end
 
 local function updateESP()
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= Player and otherPlayer.Character then
-            if ignoreLocalPlayerTeam and otherPlayer.Team == Player.Team then
-                continue
+    local validTargets = getValidTargets()
+    for _, player in pairs(validTargets) do
+        local root = player.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            local highlight = player.Character:FindFirstChild("Highlight")
+            if not highlight then
+                highlight = Instance.new("Highlight")
+                highlight.Parent = player.Character
             end
-            local humanoidRootPart = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if humanoidRootPart then
-                local highlight = otherPlayer.Character:FindFirstChild("Highlight")
-                if not highlight then
-                    highlight = Instance.new("Highlight")
-                    highlight.Parent = otherPlayer.Character
-                end
+            highlight.FillTransparency = transparency
+            highlight.OutlineTransparency = 0
+            highlight.Enabled = true
 
-                highlight.FillTransparency = espTransparency
-                highlight.OutlineTransparency = 0
-                highlight.Enabled = true
+            local origin = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position
+            if origin then
+                local direction = (root.Position - origin).Unit * (root.Position - origin).Magnitude
+                local rayParams = RaycastParams.new()
+                rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+                rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                rayParams.IgnoreWater = true
 
-                local rayOrigin = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") and Player.Character.HumanoidRootPart.Position
-                if rayOrigin then
-                    local rayDirection = (humanoidRootPart.Position - rayOrigin).Unit * (humanoidRootPart.Position - rayOrigin).Magnitude
-                    local raycastParams = RaycastParams.new()
-                    raycastParams.FilterDescendantsInstances = {Player.Character}
-                    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-                    raycastParams.IgnoreWater = true
-
-                    local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-                    if raycastResult and raycastResult.Instance and not raycastResult.Instance:IsDescendantOf(otherPlayer.Character) then
-                        highlight.FillColor = hiddenColor
-                    else
-                        highlight.FillColor = visibleColor
-                    end
+                local result = workspace:Raycast(origin, direction, rayParams)
+                if result and result.Instance and not result.Instance:IsDescendantOf(player.Character) then
+                    highlight.FillColor = hiddenColor
+                else
+                    highlight.FillColor = visibleColor
                 end
             end
         end
     end
 end
 
-VisualSection:NewToggle("ESP Player with Raycasting", "Enable or disable the ESP", function(state)
+VisualSection:NewToggle("ESP", "Enable or disable the ESP", function(state)
     if state then
-        if not espConnection then
-            espConnection = RunService.Heartbeat:Connect(updateESP)
+        if not connection then
+            connection = RunService.Heartbeat:Connect(updateESP)
         end
     else
-        if espConnection then
-            espConnection:Disconnect()
-            espConnection = nil
+        if connection then
+            connection:Disconnect()
+            connection = nil
         end
         clearESP()
     end
 end)
 
-VisualSection:NewTextBox("ESP Transparency", "Set the transparency of the ESP", function(value)
-    espTransparency = tonumber(value) or espTransparency
-    if espConnection then
+VisualSection:NewTextBox("Transparency", "Set the transparency of the ESP", function(value)
+    transparency = tonumber(value) or transparency
+    if connection then
         updateESP()
     end
 end)
 
-VisualSection:NewColorPicker("Color Visible", "Select the color for visible players", visibleColor, function(color)
+VisualSection:NewColorPicker("Visible Color", "Select the color for visible players", visibleColor, function(color)
     visibleColor = color
 end)
 
-VisualSection:NewColorPicker("Color Hidden", "Select the color for hidden players", hiddenColor, function(color)
+VisualSection:NewColorPicker("Hidden Color", "Select the color for hidden players", hiddenColor, function(color)
     hiddenColor = color
 end)
-
-VisualSection:NewToggle("team check", "", function(state)
-    ignoreLocalPlayerTeam = state
-    if espConnection then
-        updateESP()
-    end
-end)
-
 CombateSection:NewButton("FAKE SPEED GLICH", "ButtonInfo", function()
 local existingGui = game:GetService("CoreGui"):FindFirstChild("fakespeed")
 if existingGui then
@@ -1251,244 +1373,219 @@ end
  --////////////////////////////////////////////////////////////////////////////////
  
  CombateSection:NewButton("Shoot", "ButtonInfo", function()
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LocalPlayer = Players.LocalPlayer
+local existingGui = game:GetService("CoreGui"):FindFirstChild("xdd")  
+if existingGui then return end  
 
-local isSharpShooterActive = true
-local isTeamCheckActive = true
+local RunService = game:GetService("RunService")  
+local StarterGui = game:GetService("StarterGui")  
+local Players = game:GetService("Players")  
+local LocalPlayer = Players.LocalPlayer  
+local PredictionBox  
 
-local function EquipGun()
-    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester") or LocalPlayer.Backpack:FindFirstChild("Vampire's Gun") or LocalPlayer.Backpack:FindFirstChild("Gingerscope")
-    if gunInCharacter then
-        return false
-    end
+local screenGui = Instance.new("ScreenGui")  
+screenGui.Name = "xdd"  
+screenGui.Parent = game:GetService("CoreGui")  
 
-    local gunInBackpack = LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Harvester") or LocalPlayer.Backpack:FindFirstChild("Vampire's Gun") or LocalPlayer.Backpack:FindFirstChild("Gingerscope")
-    if gunInBackpack then
-        gunInBackpack.Parent = LocalPlayer.Character
-    end
-end
+local button = Instance.new("TextButton")  
+local clickSound = Instance.new("Sound")  
 
-local function UnequipGun()
-    wait(0.2)
-    local gunInCharacter = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Vampire's Gun") or LocalPlayer.Character:FindFirstChild("Gingerscope") 
-    if gunInCharacter then
-        gunInCharacter.Parent = LocalPlayer.Backpack
-    end
-end
+button.Name = "Button"  
+button.Size = UDim2.new(0, 150, 0, 150)  
+button.Position = UDim2.new(0.85, -50, 0.15, -50)  
+button.Text = ""  
+button.Font = Enum.Font.Gotham  
+button.TextSize = 14  
+button.TextColor3 = Color3.fromRGB(255, 255, 255)  
+button.BackgroundColor3 = Color3.fromRGB(0, 0, 255)  
+button.BackgroundTransparency = 0.6  
+button.Draggable = true  
+button.BorderSizePixel = 0  
+button.Parent = screenGui  
 
-local function getPing()
-    local stats = LocalPlayer:FindFirstChild("Stats")
-    if stats and stats:FindFirstChild("Ping") then
-        return stats.Ping.Value
-    end
-    return 0
-end
+clickSound.SoundId = "rbxassetid://1673280232"  
+clickSound.Parent = button  
 
-local function isTargetInAir(targetCharacter)
-    if not targetCharacter then return false end
-    local humanoid = targetCharacter:FindFirstChild("Humanoid")
-    if humanoid then
-        return humanoid.FloorMaterial == Enum.Material.Air
-    end
-    return false
-end
+local function getTeamsWithPlayers()  
+    local teams = {}  
+    for _, p in ipairs(Players:GetPlayers()) do  
+        if p.Team then  
+            teams[p.Team] = (teams[p.Team] or 0) + 1  
+        end  
+    end  
+    return teams  
+end  
 
-local function calculateOffset(ping, distanceToClosestPlayer, isTargetInAir, isTargetSmallHitbox)
-    local horizontalOffset = 0.2
-    local verticalOffset = -0.3
+local function moreThanOneTeam()  
+    local teams = getTeamsWithPlayers()  
+    local count = 0  
+    for _, numPlayers in pairs(teams) do  
+        if numPlayers > 0 then  
+            count = count + 1  
+        end  
+    end  
+    return count > 1  
+end  
 
-    if ping > 120 then
-        horizontalOffset = 0.1
-        verticalOffset = -0.2
-    elseif ping <= 50 then
-        horizontalOffset = 0.1
-        verticalOffset = 0
-    elseif ping <= 70 then
-        horizontalOffset = 0.2
-        verticalOffset = 0
-    elseif ping <= 90 then
-        horizontalOffset = 0.3
-        verticalOffset = 0.02
-    end
+local function getValidTargets()  
+    local validTargets = {}  
+    local multipleTeams = moreThanOneTeam()  
+    for _, player in ipairs(Players:GetPlayers()) do  
+        if player ~= LocalPlayer and player.Character then  
+            if multipleTeams then  
+                if player.Team ~= LocalPlayer.Team then  
+                    table.insert(validTargets, player)  
+                end  
+            else  
+                table.insert(validTargets, player)  
+            end  
+        end  
+    end  
+    return validTargets  
+end  
 
-    if isSharpShooterActive then
-        horizontalOffset = horizontalOffset * 0.1
-        verticalOffset = verticalOffset * 0.2
-    else
-        if isTargetSmallHitbox then
-            horizontalOffset = horizontalOffset * 0.06
-            verticalOffset = verticalOffset * 0.06
-        end
+local function createPredictionVisual()  
+    PredictionBox = Instance.new("Part")  
+    PredictionBox.Size = Vector3.new(0.3, 0.3, 0.2)  
+    PredictionBox.Shape = Enum.PartType.Ball  
+    PredictionBox.Anchored = true  
+    PredictionBox.CanCollide = false  
+    PredictionBox.Massless = true  
+    PredictionBox.Color = Color3.new(0, 0, 1)  
+    PredictionBox.Transparency = 0  
+    PredictionBox.Parent = workspace  
+end  
 
-        if distanceToClosestPlayer and distanceToClosestPlayer < 10 then
-            horizontalOffset = horizontalOffset * 0.2
-            verticalOffset = verticalOffset * 0.2
-        elseif distanceToClosestPlayer and distanceToClosestPlayer > 20 then
-            horizontalOffset = horizontalOffset * 0.7
-        end
+local function getCharacterRootPart(character)  
+    return character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")  
+end  
 
-        if distanceToClosestPlayer and distanceToClosestPlayer > 26 then
-            verticalOffset = verticalOffset - 0.4
-        end
+local function calculatePrediction(target, distance)  
+    if not target then return nil end  
+    local rootPart = getCharacterRootPart(target)  
+    if not rootPart then return nil end  
+    local localRootPart = LocalPlayer.Character and getCharacterRootPart(LocalPlayer.Character)  
+    if not localRootPart then return nil end  
+    local targetPosition = rootPart.Position  
+    local targetVelocity = rootPart.Velocity  
+    local shooterPosition = localRootPart.Position  
+    local predictionTimeHorizontal = 0.20
+    local predictionTimeVertical = 0.00000001  
+    if distance > 30 then  
+        predictionTimeVertical = 0.0000001  
+        predictionTimeHorizontal = 0.12
+    else  
+        predictionTimeVertical = 0.00000001  
+        predictionTimeHorizontal = 0.20
+    end  
+    local predictedX = targetPosition.X + (targetVelocity.X * predictionTimeHorizontal)  
+    local predictedY = targetPosition.Y + (targetVelocity.Y * predictionTimeVertical)  
+    local predictedZ = targetPosition.Z + (targetVelocity.Z * predictionTimeHorizontal)  
+    local predictedPosition = Vector3.new(predictedX, predictedY, predictedZ)  
+    return predictedPosition  
+end  
 
-        if isTargetInAir then
-            verticalOffset = verticalOffset + 0.08
-        end
-    end
+local function updatePrediction()  
+    local validTargets = getValidTargets()  
+    if #validTargets == 0 then  
+        return  
+    end  
+    local closestPlayer  
+    local shortestDistance = math.huge  
+    local localRootPart = LocalPlayer.Character and getCharacterRootPart(LocalPlayer.Character)  
+    if not localRootPart then return end  
+    for _, player in ipairs(validTargets) do  
+        local rootPart = getCharacterRootPart(player.Character)  
+        if rootPart then  
+            local distance = (localRootPart.Position - rootPart.Position).Magnitude  
+            if distance < shortestDistance then  
+                shortestDistance = distance  
+                closestPlayer = player  
+            end  
+        end  
+    end  
+    if closestPlayer and PredictionBox then  
+        local predictedPosition = calculatePrediction(closestPlayer.Character, shortestDistance)  
+        if predictedPosition then  
+            PredictionBox.Position = predictedPosition  
+        end  
+    end  
+end  
 
-    verticalOffset = math.clamp(verticalOffset, -0.2, 0.17)
-    
-    return horizontalOffset, verticalOffset
-end
-
-local function predictPosition(targetCharacter, distanceToClosestPlayer)
-    local humanoidRootPart = targetCharacter:FindFirstChild("HumanoidRootPart")
-    if humanoidRootPart then
-        local targetPosition = humanoidRootPart.Position
-        local targetVelocity = humanoidRootPart.Velocity
-        local distanceToPlayer = (targetPosition - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-
-        local predictionTime = math.clamp(distanceToPlayer / 60, 0, 0.08)
-        local predictedPosition = targetPosition + targetVelocity * predictionTime
-
-        local ping = getPing()
-        local inAir = isTargetInAir(targetCharacter)
-        local humanoid = targetCharacter:FindFirstChild("Humanoid")
-        local smallHitbox = false
-        if humanoid then
-            local success, result = pcall(function() return humanoid.HipWidth end)
-            if success then
-                smallHitbox = result < 2.5
+local function shootAtClosestPlayer()  
+    local validTargets = getValidTargets()  
+    if #validTargets == 0 then  
+        return  
+    end  
+    local closestPlayer  
+    local shortestDistance = math.huge  
+    local localRootPart = LocalPlayer.Character and getCharacterRootPart(LocalPlayer.Character)  
+    if not localRootPart then return end  
+    for _, player in ipairs(validTargets) do  
+        local rootPart = getCharacterRootPart(player.Character)  
+        if rootPart then  
+            local distance = (localRootPart.Position - rootPart.Position).Magnitude  
+            if distance < shortestDistance then  
+                shortestDistance = distance  
+                closestPlayer = player  
+            end  
+        end  
+    end  
+    if closestPlayer then  
+        local predictedPosition = calculatePrediction(closestPlayer.Character, shortestDistance)  
+        if predictedPosition then  
+            local gunNames = {
+    "Harvester", "Gun", "Vampire's Gun", "Gingerscope", "Green Luger", "Red Luger", 
+    "Blue Luger", "Purple Luger", "Yellow Luger", "Orange Luger", "Laser", "Shark", 
+    "Heat", "Lightbringer", "Darkbringer", "Chroma Luger", "Chroma Lightbringer", 
+    "Chroma Darkbringer", "Elderwood Revolver", "Sugar", "Candy", "Pixel", "Blaster", 
+    "Luger Cane", "Minty", "Glitch", "Ghost Gun", "Boneblade", "Tides", "Constellation",
+    "Elderwood", "Frostbite", "Slasher", "Deathshard", "Frost", "Eternal", "Soulstealer", 
+    "Seer", "Blade", "Glooms", "Magma", "Icebreaker", "Vortex", "Fractal", "Chroma Boneblade",
+    "Pumpkin Revolver", "Frostfire", "Xmas Luger", "Winter's End", "Radioactive", "Plasma",
+    "Blizzard", "Nightmare", "Specter", "Blue Steel", "Reaper's Scythe", "Nightblade", "Beast",
+    "Golden Luger", "Chromatic", "Crimson", "Zombie Slayer", "Xenon", "Venom", "Doombringer",
+    "Grim Reaper", "Lucifer", "Carnage", "Toxic Shard", "Meteorite Gun", "Galactic Blaster", 
+    "Spectral", "Quantum Gun", "Astral", "Vanguard", "King's Luger", "Zephyr", "Inferno", 
+    "Onyx", "Galaxy Blaster", "Phantom Blade", "Hunter", "Obsidian", "Solar Gun", "Titanium Luger",
+    "Witch's Gun", "Dragonfire", "Infernal", "Sapphire", "Emerald", "Ruby Luger", "Bloodshot",
+    "Raven", "Trickster", "Pumpkin", "Angel's Gun", "Devil's Gun", "Celestial", "King's Blade",
+    "Dark Matter", "Tornado Gun", "Jester", "Reckoning", "Flameheart", "Falcon", "Thunderstorm",
+    "Cursed", "Nightfall", "Soulfire", "Tempest", "Shadow Luger", "Inferno Luger", "Cosmic",
+    "Magma Gun", "Titan", "Voidblade", "Ancient Blade", "Nightshade", "Black Widow", "Soul Edge",
+    "Meteor", "Dragon's Breath", "Lunar", "Spectral Luger", "Void Gun", "Firestorm", "Hellfire",
+    "Midnight", "Warlock", "Nightmare Luger", "Blood Moon", "Valkyrie", "Red Hot Luger",
+    "Rusty Luger", "Omega", "Nebula", "Vortex Gun", "Acidic Luger", "Hex", "Photon", "Chroma Phantom",
+    "Solarflare", "Aurora", "Scorched", "Vampire Slayer", "Eclipse Gun", "Royal Luger", "Starstruck",
+    "Cherry Blossom", "Chroma Laser", "Purple Flame", "Equinox", "Hollow", "Golden Blaze", "Lightning",
+    "Berserker", "Chaos Luger", "Fallen Angel", "Blight", "Specter Luger", "Frosted", "Titan Luger",
+    "Oblivion", "Apocalypse Gun", "Silver Luger", "Ashen", "Demon's Luger", "Prism", "Lightbringer's Luger",
+    "Hologram", "Crystal Luger", "Ghostblade", "Void Luger", "Xenith", "Ice Titan", "Savior's Gun",
+    "Red Dragon", "Ice Nova", "Lunar Luger", "Spectral Scythe", "Supernova", "Divine Luger", "Shadowstrike",
+    "Void Knight", "Seraph", "Revenant", "Chroma Fire", "Phoenix", "Infernal Scythe", "Windstrike", 
+    "Frost Luger", "Holy Gun", "Neon Luger", "Angel's Blade", "Toxic Venom", "Blazing Luger", 
+    "Galactic Gun", "Radiance", "Midnight Scythe", "Eclipse Luger", "Chaos Blade", "Winter Luger", "Soul"
+}
+            local gun
+            for _, gunName in ipairs(gunNames) do
+                gun = LocalPlayer.Character:FindFirstChild(gunName)
+                if gun then break end
             end
-        end
 
-        local horizontalOffset, verticalOffset = calculateOffset(ping, distanceToClosestPlayer, inAir, smallHitbox)
-
-        if isSharpShooterActive then
-            return humanoidRootPart.Position + targetVelocity * predictionTime
-        end
-
-        predictedPosition = predictedPosition + Vector3.new(horizontalOffset, verticalOffset, 0)
-
-        return Vector3.new(predictedPosition.X, targetPosition.Y, predictedPosition.Z)
-    end
-    return nil
-end
-
-local function getClosestPlayer()
-    local localHumanoidRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not localHumanoidRootPart then
-        repeat
-            wait(0.1)
-            localHumanoidRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        until localHumanoidRootPart
-    end
-
-    local closestPlayer = nil
-    local shortestDistance = math.huge
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            if isTeamCheckActive and player.Team == LocalPlayer.Team then
-                continue
+            if gun then  
+                local args = { [1] = 1, [2] = predictedPosition }  
+                gun.GunServer.ShootStart:FireServer(unpack(args))  
             end
+        end  
+    end  
+end  
 
-            local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
-            if humanoidRootPart then
-                local distance = (localHumanoidRootPart.Position - humanoidRootPart.Position).Magnitude
-                if distance < shortestDistance then
-                    shortestDistance = distance
-                    closestPlayer = player
-                end
-            end
-        end
-    end
-    return closestPlayer and closestPlayer.Character, shortestDistance
-end
+button.MouseButton1Click:Connect(function()  
+    shootAtClosestPlayer()  
+    clickSound:Play()  
+end)  
 
-local function shootAtClosestPlayer()
-    EquipGun()
-
-    local closestCharacter, distanceToClosestPlayer = getClosestPlayer()
-    if closestCharacter then
-        local predictedPosition = predictPosition(closestCharacter, distanceToClosestPlayer)
-        if predictedPosition then
-            local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Harvester") or LocalPlayer.Character:FindFirstChild("Vampire's Gun") or LocalPlayer.Character:FindFirstChild("Gingerscope") 
-            if gun and gun:FindFirstChild("GunServer") and gun.GunServer:FindFirstChild("ShootStart") then
-                local args = {
-                    [1] = 1,
-                    [2] = predictedPosition
-                }
-                gun.GunServer.ShootStart:FireServer(unpack(args))
-                UnequipGun()
-            end
-        end
-    end
-end
-
-local existingGui = game:GetService("CoreGui"):FindFirstChild("xdd")
-if existingGui then return end
-
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "xdd"
-screenGui.Parent = game:GetService("CoreGui")
-
-local button = Instance.new("TextButton")
-local UICorner = Instance.new("UICorner")
-local clickSound = Instance.new("Sound")
-local toggleTeamCheckButton = Instance.new("TextButton")
-
-button.Name = "Button"
-button.Size = UDim2.new(0, 150, 0, 150)
-button.Position = UDim2.new(0.85, -50, 0.15, -50)
-button.Text = "Shoot"
-button.Font = Enum.Font.Gotham
-button.TextSize = 14
-button.TextColor3 = Color3.fromRGB(255, 255, 255)
-button.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-button.BackgroundTransparency = 0.6
-button.Draggable = true
-button.BorderSizePixel = 0
-button.Parent = screenGui
-
-toggleTeamCheckButton.Name = "ToggleTeamCheckButton"
-toggleTeamCheckButton.Size = UDim2.new(0, 150, 0, 50)
-toggleTeamCheckButton.Position = UDim2.new(0.12, 0, 0.1, 0)
-toggleTeamCheckButton.Text = "Disable Team Check"
-toggleTeamCheckButton.Font = Enum.Font.Gotham
-toggleTeamCheckButton.TextSize = 14
-toggleTeamCheckButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleTeamCheckButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-toggleTeamCheckButton.BackgroundTransparency = 0.6
-toggleTeamCheckButton.Draggable = true
-toggleTeamCheckButton.BorderSizePixel = 0
-toggleTeamCheckButton.Parent = screenGui
-
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = button
-UICorner.Parent = toggleTeamCheckButton
-
-clickSound.SoundId = "rbxassetid://1673280232"
-clickSound.Parent = button
-
-local function onButtonPress()
-    clickSound:Play()
-    shootAtClosestPlayer()
-end
-
-local function onToggleTeamCheckButtonPress()
-    isTeamCheckActive = not isTeamCheckActive
-    if isTeamCheckActive then
-        toggleTeamCheckButton.Text = "Disable Team Check"
-    else
-        toggleTeamCheckButton.Text = "Enable Team Check"
-    end
-end
-
-button.MouseButton1Click:Connect(onButtonPress)
-toggleTeamCheckButton.MouseButton1Click:Connect(onToggleTeamCheckButtonPress)
+createPredictionVisual()  
+RunService.RenderStepped:Connect(updatePrediction)
 end)
 
 --////////////////////////////////////////////////////////////////////////////////
@@ -1509,6 +1606,13 @@ end)
 VisualSection:NewButton("Boost fps", "ButtonInfo", function()
 loadstring(game:HttpGet("https://pastebin.com/raw/1R1D3nL7", true))()
 end)
+
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "Update lil bro", 
+    Text = "¡20.5!", 
+    Duration = 3
+})
+
 INFOSection:NewLabel("The script only works with the default Gun and Knife-")
 INFOSection:NewLabel("- weapons in the game.")
 INFOSection:NewLabel("This script is in beta and is not fully completed.")
